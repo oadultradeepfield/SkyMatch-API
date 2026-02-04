@@ -10,10 +10,10 @@ COPY container_src/go.mod ./
 RUN go mod download
 
 # Copy container source code
-COPY container_src/*.go ./
+COPY container_src/ ./
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o /server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
 
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
