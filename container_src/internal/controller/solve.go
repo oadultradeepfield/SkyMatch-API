@@ -14,9 +14,15 @@ import (
 	"server/internal/view"
 )
 
-var solveService = solve.NewService()
+type SolveController struct {
+	service *solve.Service
+}
 
-func SubmitImage(w http.ResponseWriter, r *http.Request) error {
+func NewSolveController(service *solve.Service) *SolveController {
+	return &SolveController{service: service}
+}
+
+func (c *SolveController) SubmitImage(w http.ResponseWriter, r *http.Request) error {
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, "invalid form")
 		return nil
@@ -33,7 +39,7 @@ func SubmitImage(w http.ResponseWriter, r *http.Request) error {
 		}
 	}(file)
 
-	subID, err := solveService.Submit(file, header.Filename)
+	subID, err := c.service.Submit(file, header.Filename)
 	if err != nil {
 		return fmt.Errorf("submit: %w", err)
 	}
@@ -41,13 +47,13 @@ func SubmitImage(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func GetSolveStatus(w http.ResponseWriter, r *http.Request) error {
+func (c *SolveController) GetSolveStatus(w http.ResponseWriter, r *http.Request) error {
 	jobID, err := strconv.Atoi(chi.URLParam(r, "jobId"))
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, "invalid jobId")
 		return nil
 	}
-	result, err := solveService.GetStatus(jobID, r.URL.Query().Get("fetch") == "true")
+	result, err := c.service.GetStatus(jobID, r.URL.Query().Get("fetch") == "true")
 	if err != nil {
 		return err
 	}
@@ -55,7 +61,7 @@ func GetSolveStatus(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func CancelSolve(w http.ResponseWriter, r *http.Request) error {
+func (c *SolveController) CancelSolve(w http.ResponseWriter, r *http.Request) error {
 	jobID := chi.URLParam(r, "jobId")
 	if _, err := strconv.Atoi(jobID); err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, "invalid jobId")
