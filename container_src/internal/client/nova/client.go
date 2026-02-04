@@ -31,7 +31,7 @@ func (c *Client) Login(apiKey string) (string, error) {
 
 func (c *Client) Upload(session string, file io.Reader, filename string) (int, error) {
 	var r UploadResponse
-	if err := c.http.PostFormDecode("/api/upload", map[string]string{"session": session}, file, filename, &r); err != nil {
+	if err := c.http.PostFormDecode("/api/upload", map[string]string{"session": session, "publicly_visible": "n"}, file, filename, &r); err != nil {
 		return 0, fmt.Errorf("upload: %w", err)
 	}
 	if r.Status != "success" {
