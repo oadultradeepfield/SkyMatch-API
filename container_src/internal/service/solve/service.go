@@ -93,7 +93,9 @@ func (s *Service) fetchFullData(subID, jobID int) (*model.SolveResult, error) {
 	annMap := make(map[string]nova.Annotation)
 	for _, a := range annotations {
 		for _, name := range a.Names {
-			annMap[name] = a
+			for _, part := range splitAnnotationNames(name) {
+				annMap[part] = a
+			}
 		}
 	}
 
@@ -120,16 +122,31 @@ func (s *Service) fetchFullData(subID, jobID int) (*model.SolveResult, error) {
 }
 
 func (s *Service) processObject(name string, annMap map[string]nova.Annotation) *model.IdentifiedObject {
-	obj := &model.IdentifiedObject{Identifier: name, Name: name}
+	if shouldSkipObject(name) {
+		return nil
+	}
 
-	if ann, ok := annMap[name]; ok {
+	cleanedName := cleanObjectName(name)
+	obj := &model.IdentifiedObject{Identifier: cleanedName, Name: cleanedName}
+
+	if ann, ok := lookupAnnotation(cleanedName, annMap); ok {
 		obj.XCoordinate = ann.PixelX
 		obj.YCoordinate = ann.PixelY
 	}
 
-	info, err := s.simbad.QueryObject(name)
+	info, err := s.simbad.QueryObject(cleanedName)
 	if err != nil {
-		obj.Type = classifyByName(name)
+		if base := extractNameWithoutParen(cleanedName); base != cleanedName {
+			info, err = s.simbad.QueryObject(base)
+		}
+	}
+	if err != nil {
+		if simbadName := greekToSimbadName(cleanedName); simbadName != "" {
+			info, err = s.simbad.QueryObject(simbadName)
+		}
+	}
+	if err != nil {
+		obj.Type = classifyByName(cleanedName)
 		return obj
 	}
 
@@ -159,12 +176,15 @@ func classifyByName(name string) model.ObjectType {
 			return model.ObjectTypeDSO
 		}
 	}
+	if strings.HasSuffix(lower, "nebula") {
+		return model.ObjectTypeDSO
+	}
 	return model.ObjectTypeStar
 }
 
 func classifyByType(t string) model.ObjectType {
 	lower := strings.ToLower(t)
-	for _, k := range []string{"galaxy", "nebula", "cluster", "hii", "supernova"} {
+	for _, k := range []string{"galaxy", "nebula", "cluster", "hii", "supernova", "cl*", "g ", "gxy", "snr"} {
 		if strings.Contains(lower, k) {
 			return model.ObjectTypeDSO
 		}
@@ -175,14 +195,16 @@ func classifyByType(t string) model.ObjectType {
 func classifyDSOType(t string) model.DeepSkyObjectType {
 	lower := strings.ToLower(t)
 	switch {
-	case strings.Contains(lower, "galaxy"):
+	case strings.Contains(lower, "galaxy") || strings.Contains(lower, "gxy") || lower == "g":
 		return model.DSOGalaxy
 	case strings.Contains(lower, "open") && strings.Contains(lower, "cluster"):
 		return model.DSOOpenCluster
-	case strings.Contains(lower, "globular"):
+	case strings.Contains(lower, "globular") || lower == "glc":
 		return model.DSOGlobularCluster
-	case strings.Contains(lower, "supernova"):
+	case strings.Contains(lower, "supernova") || strings.Contains(lower, "snr"):
 		return model.DSOSupernova
+	case strings.Contains(lower, "cl*") || strings.Contains(lower, "cluster"):
+		return model.DSOOpenCluster
 	default:
 		return model.DSONebula
 	}
