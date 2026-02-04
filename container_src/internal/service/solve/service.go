@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"server/internal/client/nova"
 	"server/internal/client/simbad"
@@ -96,11 +97,22 @@ func (s *Service) fetchFullData(subID, jobID int) (*model.SolveResult, error) {
 		}
 	}
 
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
 	for _, name := range info.ObjectsInField {
-		if obj := s.processObject(name, annMap); obj != nil {
-			result.Objects = append(result.Objects, *obj)
-		}
+		wg.Add(1)
+		go func(n string) {
+			defer wg.Done()
+			if obj := s.processObject(n, annMap); obj != nil {
+				mu.Lock()
+				result.Objects = append(result.Objects, *obj)
+				mu.Unlock()
+			}
+		}(name)
 	}
+
+	wg.Wait()
 
 	result.Status = model.StatusSuccess
 	result.AnnotatedImageURL = s.nova.AnnotatedImageURL(jobID)
