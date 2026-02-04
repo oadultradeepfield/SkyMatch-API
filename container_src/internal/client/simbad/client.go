@@ -65,41 +65,35 @@ func (c *Client) QueryObject(identifier string) (*ObjectInfo, error) {
 
 func parseRow(row []any, identifier string) *ObjectInfo {
 	info := &ObjectInfo{Identifier: identifier}
-	if len(row) > 0 {
-		if v, ok := row[0].(string); ok {
-			info.Identifier = v
+
+	getString := func(idx int) string {
+		if idx < len(row) {
+			if v, ok := row[idx].(string); ok {
+				return v
+			}
 		}
+		return ""
 	}
-	if len(row) > 1 {
-		if v, ok := row[1].(string); ok {
-			info.ObjectType = v
+
+	getFloat := func(idx int) *float64 {
+		if idx < len(row) {
+			if v, ok := row[idx].(float64); ok {
+				return &v
+			}
 		}
+		return nil
 	}
-	if len(row) > 2 {
-		if v, ok := row[2].(string); ok {
-			info.SpectralType = v
-		}
+
+	if s := getString(0); s != "" {
+		info.Identifier = s
 	}
-	if len(row) > 3 {
-		if v, ok := row[3].(float64); ok {
-			info.VMagnitude = &v
-		}
-	}
-	if len(row) > 4 {
-		if v, ok := row[4].(float64); ok {
-			info.Parallax = &v
-		}
-	}
-	if len(row) > 5 {
-		if v, ok := row[5].(float64); ok {
-			info.RA = &v
-		}
-	}
-	if len(row) > 6 {
-		if v, ok := row[6].(float64); ok {
-			info.Dec = &v
-		}
-	}
+	info.ObjectType = getString(1)
+	info.SpectralType = getString(2)
+	info.VMagnitude = getFloat(3)
+	info.Parallax = getFloat(4)
+	info.RA = getFloat(5)
+	info.Dec = getFloat(6)
+
 	return info
 }
 
