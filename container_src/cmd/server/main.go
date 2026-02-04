@@ -10,8 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
+
 	"server/internal/controller"
-	"server/internal/middleware"
 	"server/internal/util/httputil"
 )
 
@@ -19,21 +21,19 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	router := http.NewServeMux()
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	router := chi.NewRouter()
+	router.Use(httprate.LimitByIP(100, time.Second))
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write([]byte("Hello from SkyMatch API"))
 		if err != nil {
 			return
 		}
 	})
-	router.HandleFunc("GET /api/constellations", httputil.ErrorHandler(controller.SearchConstellations))
-
-	// Rate limiter: 100 requests per second with burst of 100
-	rateLimiter := middleware.NewRateLimiter(100, time.Second, 100)
+	router.Get("/api/constellations", httputil.ErrorHandler(controller.SearchConstellations))
 
 	server := &http.Server{
 		Addr:    ":8080",
-		Handler: rateLimiter.Middleware(router),
+		Handler: router,
 	}
 
 	go func() {
