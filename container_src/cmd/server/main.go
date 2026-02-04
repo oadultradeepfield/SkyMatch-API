@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"server/internal/controller"
+	"server/internal/middleware"
 	"server/internal/util/httputil"
 )
 
@@ -27,9 +28,12 @@ func main() {
 	})
 	router.HandleFunc("GET /api/constellations", httputil.ErrorHandler(controller.SearchConstellations))
 
+	// Rate limiter: 100 requests per second with burst of 100
+	rateLimiter := middleware.NewRateLimiter(100, time.Second, 100)
+
 	server := &http.Server{
 		Addr:    ":8080",
-		Handler: router,
+		Handler: rateLimiter.Middleware(router),
 	}
 
 	go func() {
