@@ -1,61 +1,66 @@
-# Containers Starter
+# SkyMatch API
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/containers-template)
+Backend service for astronomical image plate-solving. This API identifies celestial objects and constellations in
+uploaded sky images using astrometry.net's Nova solver and SIMBAD database.
 
-![Containers Template Preview](https://imagedelivery.net/_yJ02hpOMj_EnGvsU2aygw/5aba1fb7-b937-46fd-fa67-138221082200/public)
+Frontend repository: [SkyMatch](https://github.com/oadultradeepfield/SkyMatch)
 
-<!-- dash-content-start -->
+## Architecture
 
-This is a [Container](https://developers.cloudflare.com/containers/) starter template.
+The project uses a two-layer architecture:
 
-It demonstrates basic Container configuration, launching and routing to individual container, load balancing over
-multiple container, running basic hooks on container status changes.
+### Cloudflare Worker (`src/index.ts`)
 
-<!-- dash-content-end -->
+Entry point that routes incoming requests to the container infrastructure.
 
-Outside of this repo, you can start a new project with this template
-using [C3](https://developers.cloudflare.com/pages/get-started/c3/) (the `create-cloudflare` CLI):
+### Go Container (`container_src/`)
+
+The actual API server running on port 8080:
+
+- **Router**: Chi with IP-based rate limiting (100 req/s)
+- **External Services**: Nova (astrometry.net) for plate solving, SIMBAD for object identification
+- **Structure**: MVC-like organization
+    - `controller/` - HTTP handlers
+    - `service/` - Business logic
+    - `client/` - External API clients (Nova, SIMBAD)
+    - `model/` - Data structures
+    - `view/` - Response formatting
+
+## Setup
 
 ```bash
-npm create cloudflare@latest -- --template=cloudflare/templates/containers-template
-```
-
-## Getting Started
-
-First, run:
-
-```bash
-npm install
-# or
-yarn install
-# or
 pnpm install
-# or
-bun install
 ```
 
-Then run the development server (using the package manager of your choice):
+## Local Development
+
+For local testing, run the Go server directly:
 
 ```bash
-npm run dev
+cd container_src
+go run ./cmd/server
 ```
 
-Open [http://localhost:8787](http://localhost:8787) with your browser to see the result.
+Server runs on `localhost:8080`.
 
-You can start editing your Worker by modifying `src/index.ts` and you can start
-editing your Container by editing the content of `container_src`.
+Note: `pnpm run dev` runs the Cloudflare Worker which requires container infrastructure.
 
-## Deploying To Production
+## API Endpoints
 
-| Command          | Action                                |
-|:-----------------|:--------------------------------------|
-| `npm run deploy` | Deploy your application to Cloudflare |
+| Method   | Endpoint              | Description                    |
+|:---------|:----------------------|:-------------------------------|
+| `GET`    | `/`                   | Health check                   |
+| `GET`    | `/api/constellations` | Search constellations          |
+| `POST`   | `/api/solve`          | Submit image for plate solving |
+| `GET`    | `/api/solve/{jobId}`  | Get solve status               |
+| `DELETE` | `/api/solve/{jobId}`  | Cancel solve job               |
 
-## Learn More
+## Deployment
 
-To learn more about Containers, take a look at the following resources:
+```bash
+pnpm run deploy
+```
 
-- [Container Documentation](https://developers.cloudflare.com/containers/) - learn about Containers
-- [Container Class](https://github.com/cloudflare/containers) - learn about the Container helper class
+## License
 
-Your feedback and contributions are welcome!
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
