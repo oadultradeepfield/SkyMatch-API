@@ -29,7 +29,12 @@ func main() {
 			return
 		}
 	})
+
 	router.Get("/api/constellations", httputil.ErrorHandler(controller.SearchConstellations))
+
+	router.Post("/api/solve", httputil.ErrorHandler(controller.SubmitImage))
+	router.Get("/api/solve/{jobId}", httputil.ErrorHandler(controller.GetSolveStatus))
+	router.Delete("/api/solve/{jobId}", httputil.ErrorHandler(controller.CancelSolve))
 
 	server := &http.Server{
 		Addr:    ":8080",
