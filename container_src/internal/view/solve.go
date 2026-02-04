@@ -1,6 +1,10 @@
 package view
 
-import "server/internal/model"
+import (
+	"time"
+
+	"server/internal/model"
+)
 
 type SubmitResponse struct {
 	JobID string `json:"jobId"`
@@ -11,6 +15,7 @@ type SolveStatusResponse struct {
 	Status            string             `json:"status"`
 	AnnotatedImageURL string             `json:"annotatedImageUrl,omitempty"`
 	IdentifiedObjects []IdentifiedObject `json:"identifiedObjects,omitempty"`
+	CreatedAt         time.Time          `json:"createdAt"`
 }
 
 type IdentifiedObject struct {
@@ -31,7 +36,7 @@ type Constellation struct {
 
 type StarDetails struct {
 	VisualMagnitude *float64 `json:"visualMagnitude,omitempty"`
-	SpectralClass   string   `json:"spectralClass,omitempty"`
+	SpectralType    string   `json:"spectralType,omitempty"`
 	DistanceParsecs *float64 `json:"distanceParsecs,omitempty"`
 }
 
@@ -49,8 +54,12 @@ func NewSolveStatusResponse(r *model.SolveResult) SolveStatusResponse {
 		JobID:             r.JobID,
 		Status:            string(r.Status),
 		AnnotatedImageURL: r.AnnotatedImageURL,
+		CreatedAt:         time.Now(),
 	}
 	for _, obj := range r.Objects {
+		if obj.Type != model.ObjectTypeDSO && obj.XCoordinate == 0 && obj.YCoordinate == 0 {
+			continue
+		}
 		resp.IdentifiedObjects = append(resp.IdentifiedObjects, toIdentifiedObject(obj))
 	}
 	return resp
@@ -71,12 +80,14 @@ func toIdentifiedObject(obj model.IdentifiedObject) IdentifiedObject {
 		}
 	}
 	if obj.Type == model.ObjectTypeStar {
-		v.StarDetails = &StarDetails{
-			VisualMagnitude: obj.VMagnitude,
-			SpectralClass:   string(obj.SpectralClass),
-			DistanceParsecs: obj.DistanceParsecs,
+		if obj.VMagnitude != nil || obj.SpectralClass != "" || obj.DistanceParsecs != nil {
+			v.StarDetails = &StarDetails{
+				VisualMagnitude: obj.VMagnitude,
+				SpectralType:    string(obj.SpectralClass),
+				DistanceParsecs: obj.DistanceParsecs,
+			}
 		}
-	} else {
+	} else if obj.DSOType != "" {
 		v.DeepSkyDetails = &DeepSkyDetails{ObjectType: string(obj.DSOType)}
 	}
 	return v
