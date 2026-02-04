@@ -13,13 +13,26 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
 
+	"server/internal/client/nova"
+	"server/internal/client/simbad"
 	"server/internal/controller"
+	"server/internal/service/solve"
 	"server/internal/util/httputil"
 )
 
 func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	// Initialize clients
+	novaClient := nova.NewClient()
+	simbadClient := simbad.NewClient()
+
+	// Initialize services with dependencies
+	solveService := solve.NewService(novaClient, simbadClient)
+
+	// Initialize controllers with services
+	solveController := controller.NewSolveController(solveService)
 
 	router := chi.NewRouter()
 	router.Use(httprate.LimitByIP(100, time.Second))
@@ -32,9 +45,9 @@ func main() {
 
 	router.Get("/api/constellations", httputil.ErrorHandler(controller.SearchConstellations))
 
-	router.Post("/api/solve", httputil.ErrorHandler(controller.SubmitImage))
-	router.Get("/api/solve/{jobId}", httputil.ErrorHandler(controller.GetSolveStatus))
-	router.Delete("/api/solve/{jobId}", httputil.ErrorHandler(controller.CancelSolve))
+	router.Post("/api/solve", httputil.ErrorHandler(solveController.SubmitImage))
+	router.Get("/api/solve/{jobId}", httputil.ErrorHandler(solveController.GetSolveStatus))
+	router.Delete("/api/solve/{jobId}", httputil.ErrorHandler(solveController.CancelSolve))
 
 	server := &http.Server{
 		Addr:    ":8080",
