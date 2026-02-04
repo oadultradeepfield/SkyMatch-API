@@ -13,6 +13,14 @@
   "observability": {
     "enabled": true
   },
+  "routes": [
+    {
+      "pattern": "skymatch-api.phanuphats.com",
+      "custom_domain": true
+    }
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
   "containers": [
     {
       "class_name": "SkyMatchContainer",
