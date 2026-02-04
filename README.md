@@ -8,11 +8,13 @@
 
 This is a [Container](https://developers.cloudflare.com/containers/) starter template.
 
-It demonstrates basic Container configuration, launching and routing to individual container, load balancing over multiple container, running basic hooks on container status changes.
+It demonstrates basic Container configuration, launching and routing to individual container, load balancing over
+multiple container, running basic hooks on container status changes.
 
 <!-- dash-content-end -->
 
-Outside of this repo, you can start a new project with this template using [C3](https://developers.cloudflare.com/pages/get-started/c3/) (the `create-cloudflare` CLI):
+Outside of this repo, you can start a new project with this template
+using [C3](https://developers.cloudflare.com/pages/get-started/c3/) (the `create-cloudflare` CLI):
 
 ```bash
 npm create cloudflare@latest -- --template=cloudflare/templates/containers-template
@@ -46,7 +48,7 @@ editing your Container by editing the content of `container_src`.
 ## Deploying To Production
 
 | Command          | Action                                |
-| :--------------- | :------------------------------------ |
+|:-----------------|:--------------------------------------|
 | `npm run deploy` | Deploy your application to Cloudflare |
 
 ## Learn More
