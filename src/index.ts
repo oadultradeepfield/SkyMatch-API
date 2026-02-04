@@ -1,8 +1,12 @@
 import {Container, getContainer} from "@cloudflare/containers";
+import {env} from "cloudflare:workers";
 
 export class SkyMatchContainer extends Container<Env> {
     defaultPort = 8080;
     sleepAfter = "2m";
+    envVars = {
+        NOVA_API_KEY: env.NOVA_API_KEY,
+    };
 }
 
 export default {
