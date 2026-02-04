@@ -22,7 +22,7 @@ func NewClient() *Client {
 
 func (c *Client) QueryObject(identifier string) (*ObjectInfo, error) {
 	query := fmt.Sprintf(`
-		SELECT TOP 1 main_id, otype_longname, sp_type, flux AS vmag, plx_value, ra, dec
+		SELECT TOP 1 main_id, otype_txt, sp_type, flux AS vmag, plx_value, ra, dec
 		FROM basic
 		LEFT JOIN flux ON basic.oid = flux.oidref AND flux.filter = 'V'
 		WHERE main_id = '%s' OR oid IN (SELECT oidref FROM ident WHERE id = '%s')
