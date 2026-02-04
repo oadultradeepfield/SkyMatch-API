@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"server/internal/controller"
+	"server/internal/util/httputil"
 )
 
 func main() {
@@ -15,10 +19,13 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	router := http.NewServeMux()
-	// Add your routes here
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello from SkyMatch API"))
+		_, err := w.Write([]byte("Hello from SkyMatch API"))
+		if err != nil {
+			return
+		}
 	})
+	router.HandleFunc("GET /api/constellations", httputil.ErrorHandler(controller.SearchConstellations))
 
 	server := &http.Server{
 		Addr:    ":8080",
@@ -27,7 +34,7 @@ func main() {
 
 	go func() {
 		log.Printf("Server listening on %s\n", server.Addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal(err)
 		}
 	}()
