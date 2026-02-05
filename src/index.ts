@@ -6,6 +6,9 @@ export class SkyMatchContainer extends Container<Env> {
     sleepAfter = "2m";
     envVars = {
         NOVA_API_KEY: env.NOVA_API_KEY,
+        CF_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID,
+        CF_KV_NAMESPACE_ID: env.CLOUDFLARE_KV_NAMESPACE_ID,
+        CF_API_TOKEN: env.CLOUDFLARE_API_TOKEN,
     };
 }
 
