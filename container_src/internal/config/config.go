@@ -9,6 +9,7 @@ type Config struct {
 	Server ServerConfig
 	Nova   NovaConfig
 	Simbad SimbadConfig
+	KV     KVConfig
 }
 
 type ServerConfig struct {
@@ -28,6 +29,15 @@ type SimbadConfig struct {
 	Timeout time.Duration
 }
 
+type KVConfig struct {
+	BaseURL     string
+	AccountID   string
+	NamespaceID string
+	APIToken    string
+	Enabled     bool
+	Timeout     time.Duration
+}
+
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -44,6 +54,22 @@ func Load() *Config {
 			BaseURL: getEnv("SIMBAD_BASE_URL", "https://simbad.u-strasbg.fr/simbad/sim-tap/sync"),
 			Timeout: getDuration("SIMBAD_TIMEOUT", 10*time.Second),
 		},
+		KV: loadKVConfig(),
+	}
+}
+
+func loadKVConfig() KVConfig {
+	accountID := os.Getenv("CF_ACCOUNT_ID")
+	namespaceID := os.Getenv("CF_KV_NAMESPACE_ID")
+	apiToken := os.Getenv("CF_API_TOKEN")
+
+	return KVConfig{
+		BaseURL:     getEnv("CF_KV_BASE_URL", "https://api.cloudflare.com/client/v4"),
+		AccountID:   accountID,
+		NamespaceID: namespaceID,
+		APIToken:    apiToken,
+		Enabled:     accountID != "" && namespaceID != "" && apiToken != "",
+		Timeout:     getDuration("KV_TIMEOUT", 5*time.Second),
 	}
 }
 
