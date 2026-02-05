@@ -15,23 +15,23 @@ import (
 
 	"server/internal/client/nova"
 	"server/internal/client/simbad"
+	"server/internal/config"
 	"server/internal/controller"
 	"server/internal/service/solve"
 	"server/internal/util/httputil"
 )
 
 func main() {
+	cfg := config.Load()
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	// Initialize clients
-	novaClient := nova.NewClient()
-	simbadClient := simbad.NewClient()
+	novaClient := nova.NewClient(cfg.Nova)
+	simbadClient := simbad.NewClient(cfg.Simbad)
 
-	// Initialize services with dependencies
-	solveService := solve.NewService(novaClient, simbadClient)
+	solveService := solve.NewService(novaClient, simbadClient, cfg.Nova.APIKey)
 
-	// Initialize controllers with services
 	solveController := controller.NewSolveController(solveService)
 
 	router := chi.NewRouter()
@@ -50,8 +50,10 @@ func main() {
 	router.Delete("/api/solve/{jobId}", httputil.ErrorHandler(solveController.CancelSolve))
 
 	server := &http.Server{
-		Addr:    ":8080",
-		Handler: router,
+		Addr:         ":" + cfg.Server.Port,
+		Handler:      router,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
 	}
 
 	go func() {
