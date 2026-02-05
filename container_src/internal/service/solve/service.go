@@ -1,41 +1,52 @@
 package solve
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"os"
+	"log"
 	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"server/internal/client"
 	"server/internal/client/nova"
+	apperrors "server/internal/errors"
 	"server/internal/model"
+	"server/internal/service"
 )
+
+var _ service.SolveService = (*Service)(nil)
 
 type Service struct {
 	nova   client.NovaClient
 	simbad client.SimbadClient
+	apiKey string
 }
 
-func NewService(novaClient client.NovaClient, simbadClient client.SimbadClient) *Service {
-	return &Service{nova: novaClient, simbad: simbadClient}
+func NewService(novaClient client.NovaClient, simbadClient client.SimbadClient, apiKey string) *Service {
+	return &Service{nova: novaClient, simbad: simbadClient, apiKey: apiKey}
 }
 
-func (s *Service) Submit(file io.Reader, filename string) (int, error) {
-	apiKey := os.Getenv("NOVA_API_KEY")
-	if apiKey == "" {
-		return 0, fmt.Errorf("NOVA_API_KEY not set")
+func (s *Service) Submit(ctx context.Context, file io.Reader, filename string) (int, error) {
+	if s.apiKey == "" {
+		return 0, apperrors.NewValidationError("NOVA_API_KEY not set")
 	}
-	session, err := s.nova.Login(apiKey)
+	session, err := s.nova.Login(ctx, s.apiKey)
 	if err != nil {
-		return 0, err
+		return 0, apperrors.NewExternalError("nova", err)
 	}
-	return s.nova.Upload(session, file, filename)
+	subID, err := s.nova.Upload(ctx, session, file, filename)
+	if err != nil {
+		return 0, apperrors.NewExternalError("nova", err)
+	}
+	return subID, nil
 }
 
-func (s *Service) GetStatus(subID int, fetch bool) (*model.SolveResult, error) {
+func (s *Service) GetStatus(ctx context.Context, subID int, fetch bool) (*model.SolveResult, error) {
 	result := &model.SolveResult{JobID: fmt.Sprintf("%d", subID)}
 
-	sub, err := s.nova.GetSubmission(subID)
+	sub, err := s.nova.GetSubmission(ctx, subID)
 	if err != nil {
 		result.Status = model.StatusFailure
 		return result, nil
@@ -49,7 +60,7 @@ func (s *Service) GetStatus(subID int, fetch bool) (*model.SolveResult, error) {
 	jobID := sub.Jobs[0]
 	result.NovaJobID = jobID
 
-	status, err := s.nova.GetJobStatus(jobID)
+	status, err := s.nova.GetJobStatus(ctx, jobID)
 	if err != nil {
 		result.Status = model.StatusFailure
 		return result, nil
@@ -69,22 +80,22 @@ func (s *Service) GetStatus(subID int, fetch bool) (*model.SolveResult, error) {
 		return result, nil
 	}
 
-	return s.fetchFullData(subID, jobID)
+	return s.fetchFullData(ctx, subID, jobID)
 }
 
-func (s *Service) fetchFullData(subID, jobID int) (*model.SolveResult, error) {
+func (s *Service) fetchFullData(ctx context.Context, subID, jobID int) (*model.SolveResult, error) {
 	result := &model.SolveResult{
 		JobID:     fmt.Sprintf("%d", subID),
 		NovaJobID: jobID,
 	}
 
-	info, err := s.nova.GetJobInfo(jobID)
+	info, err := s.nova.GetJobInfo(ctx, jobID)
 	if err != nil || len(info.ObjectsInField) == 0 {
 		result.Status = model.StatusFailure
 		return result, nil
 	}
 
-	annotations, err := s.nova.GetAnnotations(jobID)
+	annotations, err := s.nova.GetAnnotations(ctx, jobID)
 	if err != nil {
 		result.Status = model.StatusFailure
 		return result, nil
@@ -99,31 +110,39 @@ func (s *Service) fetchFullData(subID, jobID int) (*model.SolveResult, error) {
 		}
 	}
 
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(10)
 	var mu sync.Mutex
-	var wg sync.WaitGroup
 
 	for _, name := range info.ObjectsInField {
-		wg.Add(1)
-		go func(n string) {
-			defer wg.Done()
-			if obj := s.processObject(n, annMap); obj != nil {
+		name := name
+		g.Go(func() error {
+			obj, err := s.processObject(ctx, name, annMap)
+			if err != nil {
+				log.Printf("process %s: %v", name, err)
+				return nil
+			}
+			if obj != nil {
 				mu.Lock()
 				result.Objects = append(result.Objects, *obj)
 				mu.Unlock()
 			}
-		}(name)
+			return nil
+		})
 	}
 
-	wg.Wait()
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
 
 	result.Status = model.StatusSuccess
 	result.AnnotatedImageURL = s.nova.AnnotatedImageURL(jobID)
 	return result, nil
 }
 
-func (s *Service) processObject(name string, annMap map[string]nova.Annotation) *model.IdentifiedObject {
+func (s *Service) processObject(ctx context.Context, name string, annMap map[string]nova.Annotation) (*model.IdentifiedObject, error) {
 	if shouldSkipObject(name) {
-		return nil
+		return nil, nil
 	}
 
 	cleanedName := cleanObjectName(name)
@@ -134,20 +153,20 @@ func (s *Service) processObject(name string, annMap map[string]nova.Annotation) 
 		obj.YCoordinate = ann.PixelY
 	}
 
-	info, err := s.simbad.QueryObject(cleanedName)
+	info, err := s.simbad.QueryObject(ctx, cleanedName)
 	if err != nil {
 		if base := extractNameWithoutParen(cleanedName); base != cleanedName {
-			info, err = s.simbad.QueryObject(base)
+			info, err = s.simbad.QueryObject(ctx, base)
 		}
 	}
 	if err != nil {
 		if simbadName := greekToSimbadName(cleanedName); simbadName != "" {
-			info, err = s.simbad.QueryObject(simbadName)
+			info, err = s.simbad.QueryObject(ctx, simbadName)
 		}
 	}
 	if err != nil {
 		obj.Type = classifyByName(cleanedName)
-		return obj
+		return obj, nil
 	}
 
 	obj.Type = classifyByType(info.ObjectType)
@@ -166,5 +185,5 @@ func (s *Service) processObject(name string, annMap map[string]nova.Annotation) 
 		obj.Constellation = model.GetConstellationByCoords(*info.RA, *info.Dec)
 	}
 
-	return obj
+	return obj, nil
 }

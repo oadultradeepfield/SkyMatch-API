@@ -2,11 +2,14 @@ package httputil
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -16,23 +19,44 @@ type Client struct {
 }
 
 func NewClient(baseURL string, timeout time.Duration) *Client {
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	}
 	return &Client{
-		http:    &http.Client{Timeout: timeout},
+		http: &http.Client{
+			Timeout:   timeout,
+			Transport: transport,
+		},
 		baseURL: baseURL,
 	}
 }
 
-func (c *Client) Get(path string, v any) error {
-	resp, err := c.http.Get(c.baseURL + path)
+func (c *Client) Get(ctx context.Context, path string, v any) error {
+	return c.GetWithParams(ctx, path, nil, v)
+}
+
+func (c *Client) GetWithParams(ctx context.Context, path string, params url.Values, v any) error {
+	reqURL := c.baseURL + path
+	if len(params) > 0 {
+		reqURL += "?" + params.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
 	}
-	defer func(Body io.ReadCloser) {
-		closeErr := Body.Close()
-		if closeErr != nil {
-			return
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
 		}
-	}(resp.Body)
+	}()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("GET %s: status %d", path, resp.StatusCode)
@@ -40,7 +64,7 @@ func (c *Client) Get(path string, v any) error {
 	return json.NewDecoder(resp.Body).Decode(v)
 }
 
-func (c *Client) PostForm(path string, fields map[string]string, file io.Reader, filename string) (*http.Response, error) {
+func (c *Client) PostForm(ctx context.Context, path string, fields map[string]string, file io.Reader, filename string) (*http.Response, error) {
 	body := &bytes.Buffer{}
 	w := multipart.NewWriter(body)
 
@@ -66,7 +90,7 @@ func (c *Client) PostForm(path string, fields map[string]string, file io.Reader,
 		return nil, fmt.Errorf("close writer: %w", closeErr)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, body)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -79,17 +103,16 @@ func (c *Client) PostForm(path string, fields map[string]string, file io.Reader,
 	return resp, nil
 }
 
-func (c *Client) PostFormDecode(path string, fields map[string]string, file io.Reader, filename string, v any) error {
-	resp, err := c.PostForm(path, fields, file, filename)
+func (c *Client) PostFormDecode(ctx context.Context, path string, fields map[string]string, file io.Reader, filename string, v any) error {
+	resp, err := c.PostForm(ctx, path, fields, file, filename)
 	if err != nil {
 		return err
 	}
-	defer func(Body io.ReadCloser) {
-		closeErr := Body.Close()
-		if closeErr != nil {
-			return
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
 		}
-	}(resp.Body)
+	}()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("POST %s: status %d", path, resp.StatusCode)

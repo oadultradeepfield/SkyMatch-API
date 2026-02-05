@@ -1,26 +1,33 @@
 package simbad
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strings"
-	"time"
+
+	"server/internal/config"
+	"server/internal/util/httputil"
+	"server/internal/util/ratelimit"
 )
 
-const baseURL = "https://simbad.u-strasbg.fr/simbad/sim-tap/sync"
-
 type Client struct {
-	http *http.Client
+	http    *httputil.Client
+	limiter *ratelimit.Limiter
 }
 
-func NewClient() *Client {
-	return &Client{http: &http.Client{Timeout: 10 * time.Second}}
+func NewClient(cfg config.SimbadConfig) *Client {
+	return &Client{
+		http:    httputil.NewClient(cfg.BaseURL, cfg.Timeout),
+		limiter: ratelimit.New(5, 10),
+	}
 }
 
-func (c *Client) QueryObject(identifier string) (*ObjectInfo, error) {
+func (c *Client) QueryObject(ctx context.Context, identifier string) (*ObjectInfo, error) {
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limit: %w", err)
+	}
+
 	query := fmt.Sprintf(`
 		SELECT TOP 1 main_id, otype_txt, sp_type, flux AS vmag, plx_value, ra, dec
 		FROM basic
@@ -28,39 +35,26 @@ func (c *Client) QueryObject(identifier string) (*ObjectInfo, error) {
 		WHERE main_id = '%s' OR oid IN (SELECT oidref FROM ident WHERE id = '%s')
 	`, escape(identifier), escape(identifier))
 
-	reqURL := baseURL + "?" + url.Values{
+	params := url.Values{
 		"request": {"doQuery"},
 		"lang":    {"adql"},
 		"format":  {"json"},
 		"query":   {query},
-	}.Encode()
+	}
 
-	resp, err := c.http.Get(reqURL)
-	if err != nil {
+	var r tapResponse
+	if err := c.http.GetWithParams(ctx, "", params, &r); err != nil {
 		return nil, fmt.Errorf("simbad request: %w", err)
-	}
-	defer func(Body io.ReadCloser) {
-		closeErr := Body.Close()
-		if closeErr != nil {
-			return
-		}
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("simbad status: %d", resp.StatusCode)
-	}
-
-	var r struct {
-		Data [][]any `json:"data"`
-	}
-	if decodeErr := json.NewDecoder(resp.Body).Decode(&r); decodeErr != nil {
-		return nil, fmt.Errorf("decode response: %w", decodeErr)
 	}
 	if len(r.Data) == 0 {
 		return nil, fmt.Errorf("not found: %s", identifier)
 	}
 
 	return parseRow(r.Data[0], identifier), nil
+}
+
+type tapResponse struct {
+	Data [][]any `json:"data"`
 }
 
 func parseRow(row []any, identifier string) *ObjectInfo {

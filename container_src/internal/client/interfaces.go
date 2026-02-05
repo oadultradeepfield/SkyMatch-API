@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"io"
 
 	"server/internal/client/nova"
@@ -9,16 +10,16 @@ import (
 
 // NovaClient defines the contract for Nova API operations.
 type NovaClient interface {
-	Login(apiKey string) (string, error)
-	Upload(session string, file io.Reader, filename string) (int, error)
-	GetSubmission(subID int) (*nova.Submission, error)
-	GetJobStatus(jobID int) (string, error)
-	GetJobInfo(jobID int) (*nova.JobInfo, error)
-	GetAnnotations(jobID int) ([]nova.Annotation, error)
+	Login(ctx context.Context, apiKey string) (string, error)
+	Upload(ctx context.Context, session string, file io.Reader, filename string) (int, error)
+	GetSubmission(ctx context.Context, subID int) (*nova.Submission, error)
+	GetJobStatus(ctx context.Context, jobID int) (string, error)
+	GetJobInfo(ctx context.Context, jobID int) (*nova.JobInfo, error)
+	GetAnnotations(ctx context.Context, jobID int) ([]nova.Annotation, error)
 	AnnotatedImageURL(jobID int) string
 }
 
 // SimbadClient defines the contract for SIMBAD queries.
 type SimbadClient interface {
-	QueryObject(identifier string) (*simbad.ObjectInfo, error)
+	QueryObject(ctx context.Context, identifier string) (*simbad.ObjectInfo, error)
 }
