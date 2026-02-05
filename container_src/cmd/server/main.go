@@ -13,6 +13,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
 
+	"server/internal/client"
+	"server/internal/client/kv"
 	"server/internal/client/nova"
 	"server/internal/client/simbad"
 	"server/internal/config"
@@ -28,7 +30,12 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	novaClient := nova.NewClient(cfg.Nova)
-	simbadClient := simbad.NewClient(cfg.Simbad)
+
+	var simbadClient client.SimbadClient = simbad.NewClient(cfg.Simbad)
+	if cfg.KV.Enabled {
+		kvClient := kv.NewClient(cfg.KV)
+		simbadClient = simbad.NewCachedClient(simbadClient, kvClient, 30*24*3600)
+	}
 
 	solveService := solve.NewService(novaClient, simbadClient, cfg.Nova.APIKey)
 
